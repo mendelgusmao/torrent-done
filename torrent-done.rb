@@ -37,6 +37,7 @@ class Convert
     def self.perform(filename)
         Dir.chdir(File.dirname(filename))
         *filename, extension = filename.split(".")
+        filename = filename.join(".")
 
         cmd = [
             MKVMERGE,
@@ -65,6 +66,7 @@ class Rename
         Dir.chdir(File.dirname(filename))
         File.rename(filename, "#{filename}.old") 
         *filename, extension = filename.split(".")
+        filename = filename.join(".")
         File.rename("#{filename}.sub.mkv", "#{filename}.mkv")
     end
 end
