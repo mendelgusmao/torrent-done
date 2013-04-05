@@ -52,7 +52,7 @@ class Convert
 
         err = ""
         if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
-            Resque.enqueue(Rename, file)
+            Resque.enqueue(Rename, filename)
         else
             raise "Couldn't convert #{filename}.#{extension}: \n#{err}"
         end
