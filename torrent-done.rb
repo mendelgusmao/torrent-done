@@ -1,31 +1,30 @@
 #!env ruby
 
 require "resque"
-require "open3"
+require "open4"
 
 class Subtitles
     SUBLIMINAL = "/usr/local/bin/subliminal"
-    SUB2SRT = "/etc/scripts/sub2srt"
+    DEFAULT_SERVICE = "opensubtitles"
     @queue = :transmission
 
-    def self.perform(file, service = "opensubtitles")
-        filename = file.join(".")
+    def self.perform(filename, service = DEFAULT_SERVICE)
+        Dir.chdir(File.dirname(filename))
 
         cmd = [SUBLIMINAL]
-        cmd << "--force"
-        cmd << "-s #{service}" unless service.empty?
-        cmd << "-l pt-br"
-        cmd << "'#{filename}'"
+        cmd << " --force"
+        cmd << " -s #{service}" unless service.empty?
+        cmd << " -l pt-br"
+        cmd << " '#{filename}'"
 
-        sin, sout, serr = Open3.popen3(cmd.join(" "))
-
-        if $? == 0
-            Resque.enqueue(Convert, file)
+        err = ""
+        if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
+            Resque.enqueue(Convert, filename)
         else
             unless service == ""
-                Resque.enqueue(Subtitles, file, "")
+                Resque.enqueue(Subtitles, filename, "")
             else
-                raise "Couldn't download subtitle for #{filename}: \n#{serr.read}"
+                raise "Couldn't download subtitle for #{filename}: \n#{err}"
             end
         end
     end
@@ -35,26 +34,26 @@ class Convert
     MKVMERGE = "/usr/bin/mkvmerge"
     @queue = :transmission
 
-    def self.perform(file)
-        filename = file.join(".")
+    def self.perform(filename)
+        Dir.chdir(File.dirname(filename))
+        *filename, extension = filename.split(".")
 
         cmd = [
             MKVMERGE,
-            "-o '#{file.first}.sub.mkv'",
-            "'#{filename}'",
-            "--clusters-in-meta-seek",
-            "--engage no_cue_duration",
-            "--engage no_cue_relative_position",
-            "--subtitle-charset 0:ISO-8859-1",
-            "'#{file.first}.srt'"
+            " -o '#{filename}.sub.mkv'",
+            " '#{filename}.#{extension}'",
+            " --clusters-in-meta-seek",
+            " --engage no_cue_duration",
+            " --engage no_cue_relative_position",
+            " --subtitle-charset 0:ISO-8859-1",
+            " '#{filename}.srt'"
         ]
 
-        sin, sout, serr = Open3.popen3(cmd.join(" "))
-
-        if $? == 0
+        err = ""
+        if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
             Resque.enqueue(Rename, file)
         else
-            raise "Couldn't convert #{filename}: \n#{serr.read}"
+            raise "Couldn't convert #{filename}.#{extension}: \n#{err}"
         end
     end
 end
@@ -62,13 +61,11 @@ end
 class Rename
     @queue = :transmission
 
-    def self.perform(file)
-        unless file.last.downcase == "mkv"
-            filename = file.join(".")
-            File.rename(filename, "#{filename}.old") 
-        end
-
-        File.rename("#{file.first}.sub.mkv", "#{file.first}.mkv")
+    def self.perform(filename)
+        Dir.chdir(File.dirname(filename))
+        File.rename(filename, "#{filename}.old") 
+        *filename, extension = filename.split(".")
+        File.rename("#{filename}.sub.mkv", "#{filename}.mkv")
     end
 end
 
@@ -79,11 +76,8 @@ class TorrentDone
     def self.perform(directory)
         Dir.chdir(directory)
         Dir.glob("*").each do |filename|
-            *filename, extension = filename.split(".")
-            file = [directory + "/" + filename.join("."), extension]
-
-            if EXTENSIONS.include? file.last.downcase
-                Resque.enqueue(Subtitles, file)
+            if EXTENSIONS.include? filename.split(".").last.downcase
+                Resque.enqueue(Subtitles, "%s/%s" % [directory, filename]) 
             end
         end
     end

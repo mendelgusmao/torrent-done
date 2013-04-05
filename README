@@ -1,0 +1,7 @@
+Depends on
+- ruby >= 1.9.3
+- gem open4
+- redis
+- resque
+- mkvmerge
+- subliminal
