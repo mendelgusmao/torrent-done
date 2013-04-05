@@ -13,7 +13,8 @@ class Subtitles
 
         cmd = [SUBLIMINAL]
         cmd << " --force"
-        cmd << " -s #{service}" unless service.empty?
+        cmd << " -w 1"
+        cmd << " -s #{service}" unless service.nil?
         cmd << " -l pt-br"
         cmd << " '#{filename}'"
 
@@ -21,11 +22,8 @@ class Subtitles
         if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
             Resque.enqueue(Convert, filename)
         else
-            unless service == ""
-                Resque.enqueue(Subtitles, filename, "")
-            else
-                raise "Couldn't download subtitle for #{filename}: \n#{err}"
-            end
+            raise "Couldn't download subtitle for #{filename}: \n#{err}" if service.nil?
+            Resque.enqueue(Subtitles, filename, nil)
         end
     end
 end
@@ -52,7 +50,7 @@ class Convert
 
         err = ""
         if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
-            Resque.enqueue(Rename, filename)
+            Resque.enqueue(Rename, "#{filename}.#{extension}")
         else
             raise "Couldn't convert #{filename}.#{extension}: \n#{err}"
         end
@@ -79,7 +77,7 @@ class TorrentDone
         Dir.chdir(directory)
         Dir.glob("*").each do |filename|
             if EXTENSIONS.include? filename.split(".").last.downcase
-                Resque.enqueue(Subtitles, "%s/%s" % [directory, filename]) 
+                Resque.enqueue(Subtitles, "#{directory}/#{filename}") 
             end
         end
     end
