@@ -9,3 +9,5 @@ Depends on
 Modify /etc/transmission-daemon/settings.json
   "script-torrent-done-enabled": true 
   "script-torrent-done-filename": "/path/to/torrent-done.rb"
+
+Modify /path/to/torrent-done.yaml to suit your needs

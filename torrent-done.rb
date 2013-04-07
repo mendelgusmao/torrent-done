@@ -2,58 +2,40 @@
 
 require "resque"
 require "open4"
-
-EXTENSIONS=["mkv", "mp4", "avi", "rmvb"]
+require "yaml"
 
 class TorrentDone
     DEFAULT_SERVICE = "opensubtitles"
-    SUBLIMINAL = "/usr/local/bin/subliminal"
 
     @queue = :transmission
 
-    def self.perform(filename, service = DEFAULT_SERVICE)
+    def self.perform(config, filename, service = DEFAULT_SERVICE)
         Dir.chdir(File.dirname(filename))
 
-        cmd = [SUBLIMINAL]
-        cmd << " --force"
-        cmd << " -w 1"
-        cmd << " -s #{service}" unless service.nil?
-        cmd << " -l pt-br"
-        cmd << " '#{filename}'"
+        cmd = config["subtitles"] % [ service, filename ]
 
         err = ""
-        if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
-            Resque.enqueue(ConvertAndRename, filename)
+        if Open4::popen4(cmd) { |p,i,o,e| err = e.read } == 0
+            Resque.enqueue(ConvertAndRename, config, filename)
         else
             raise "Couldn't download subtitle for #{filename}: \n#{err}" if service.nil?
-            perform(filename, nil)
+            perform(config, filename, nil)
         end
     end
 end
 
 class ConvertAndRename
-    MKVMERGE = "/usr/bin/mkvmerge"
-    
     @queue = :transmission
 
-    def self.perform(filename)
+    def self.perform(config, filename)
         Dir.chdir(File.dirname(filename))
         *filename, extension = filename.split(".")
         filename = filename.join(".")
 
-        cmd = [
-            MKVMERGE,
-            " -o '#{filename}.sub.mkv'",
-            " '#{filename}.#{extension}'",
-            " --clusters-in-meta-seek",
-            " --engage no_cue_duration",
-            " --engage no_cue_relative_position",
-            " --subtitle-charset 0:ISO-8859-1",
-            " '#{filename}.srt'"
-        ]
+        cmd = config["convert"] % [ filename, "#{filename}.#{extension}", filename ]
 
         err = ""
-        if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
+        if Open4::popen4(cmd) { |p,i,o,e| err = e.read } == 0
             rename("#{filename}.#{extension}")
         else
             raise "Couldn't convert #{filename}.#{extension}: \n#{err}"
@@ -75,10 +57,13 @@ if $PROGRAM_NAME == __FILE__
         ENV["TR_TORRENT_NAME"]
     ].join("/")
 
+    config = YAML.load_file(File.dirname(__FILE__) + "/torrent-done.yaml")
+    extensions = config["extensions"].split(" ")
+
     Dir.chdir(directory)
     Dir.glob("**/*").each do |filename|
-        if EXTENSIONS.include? filename.split(".").last.downcase
-            Resque.enqueue(TorrentDone, "#{directory}/#{filename}")
+        if extensions.include? filename.split(".").last.downcase
+            Resque.enqueue(TorrentDone, config, "#{directory}/#{filename}")
         end
     end
 end
