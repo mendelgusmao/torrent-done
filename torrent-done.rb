@@ -5,21 +5,18 @@ require "open4"
 require "yaml"
 
 class TorrentDone
-    DEFAULT_SERVICE = "opensubtitles"
-
     @queue = :transmission
 
-    def self.perform(config, filename, service = DEFAULT_SERVICE)
+    def self.perform(config, filename)
         Dir.chdir(File.dirname(filename))
 
-        cmd = config["subtitles"] % [ service, filename ]
+        cmd = config["subtitles"] % filename
 
         err = ""
         if Open4::popen4(cmd) { |p,i,o,e| err = e.read } == 0
             Resque.enqueue(ConvertAndRename, config, filename)
         else
-            raise "Couldn't download subtitle for #{filename}: \n#{err}" if service.nil?
-            perform(config, filename, nil)
+            raise "Couldn't download subtitle for #{filename}: \n#{err}"
         end
     end
 end
