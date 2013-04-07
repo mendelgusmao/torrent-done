@@ -3,9 +3,12 @@
 require "resque"
 require "open4"
 
-class Subtitles
-    SUBLIMINAL = "/usr/local/bin/subliminal"
+EXTENSIONS=["mkv", "mp4", "avi", "rmvb"]
+
+class TorrentDone
     DEFAULT_SERVICE = "opensubtitles"
+    SUBLIMINAL = "/usr/local/bin/subliminal"
+
     @queue = :transmission
 
     def self.perform(filename, service = DEFAULT_SERVICE)
@@ -20,16 +23,17 @@ class Subtitles
 
         err = ""
         if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
-            Resque.enqueue(Convert, filename)
+            Resque.enqueue(ConvertAndRename, filename)
         else
             raise "Couldn't download subtitle for #{filename}: \n#{err}" if service.nil?
-            Resque.enqueue(Subtitles, filename, nil)
+            perform(filename, nil)
         end
     end
 end
 
-class Convert
+class ConvertAndRename
     MKVMERGE = "/usr/bin/mkvmerge"
+    
     @queue = :transmission
 
     def self.perform(filename)
@@ -50,17 +54,13 @@ class Convert
 
         err = ""
         if Open4::popen4(cmd.join) { |p,i,o,e| err = e.read } == 0
-            Resque.enqueue(Rename, "#{filename}.#{extension}")
+            rename("#{filename}.#{extension}")
         else
             raise "Couldn't convert #{filename}.#{extension}: \n#{err}"
         end
     end
-end
 
-class Rename
-    @queue = :transmission
-
-    def self.perform(filename)
+    def self.rename(filename)
         Dir.chdir(File.dirname(filename))
         File.rename(filename, "#{filename}.old") 
         *filename, extension = filename.split(".")
@@ -69,25 +69,16 @@ class Rename
     end
 end
 
-class TorrentDone
-    EXTENSIONS=["mkv", "mp4", "avi", "rmvb"]
-    @queue = :transmission
-
-    def self.perform(directory)
-        Dir.chdir(directory)
-        Dir.glob("*").each do |filename|
-            if EXTENSIONS.include? filename.split(".").last.downcase
-                Resque.enqueue(Subtitles, "#{directory}/#{filename}") 
-            end
-        end
-    end
-end
-
 if $PROGRAM_NAME == __FILE__
-    torrent_directory = ARGV.first || [
+    directory = ARGV.first || [
         ENV["TR_TORRENT_DIR"],
         ENV["TR_TORRENT_NAME"]
     ].join("/")
 
-    Resque.enqueue(TorrentDone, torrent_directory)
+    Dir.chdir(directory)
+    Dir.glob("**/*").each do |filename|
+        if EXTENSIONS.include? filename.split(".").last.downcase
+            Resque.enqueue(TorrentDone, "#{directory}/#{filename}")
+        end
+    end
 end
