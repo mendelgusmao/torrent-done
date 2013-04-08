@@ -1,6 +1,7 @@
 Depends on
 - ruby >= 1.9.3
 - redis
+- gem active_support/inflector
 - gem open4
 - gem resque
 - mkvmerge

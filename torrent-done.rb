@@ -3,39 +3,81 @@
 require "resque"
 require "open4"
 require "yaml"
+require "active_support/inflector"
 
-class TorrentDone
-    @queue = :transmission
+class Base
+    def self.read
+        YAML.load_file(File.dirname(__FILE__) + "/torrent-done.yaml")
+    end
 
-    def self.perform(config, filename)
+    def self.get_job_config
+        read()[self.to_s.underscore]
+    end
+
+    def self.perform(jobs, filename)
+        execute(filename)
+        Resque.enqueue(jobs.shift.camelize.constantize, jobs, filename) unless jobs.empty?
+    end
+end
+
+class DownloadSubtitles < Base
+    @config = get_job_config() 
+    @queue = @config["queue"]
+
+    def self.execute(filename)
         Dir.chdir(File.dirname(filename))
 
-        cmd = config["subtitles"] % filename
+        cmd = @config["command"] % filename
 
         err = ""
-        if Open4::popen4(cmd) { |p,i,o,e| err = e.read } == 0
-            Resque.enqueue(ConvertAndRename, config, filename)
-        else
-            raise "Couldn't download subtitle for #{filename}: \n#{err}"
+        out = ""
+        if Open4::popen4(cmd) { |p,i,o,e| err = e.read; out = o.read } != 0
+            raise "Couldn't download subtitle for #{filename}: \n#{out}\n#{err}"
         end
     end
 end
 
-class ConvertAndRename
-    @queue = :transmission
+class ConvertSubtitles < Base
+    @config = get_job_config() 
+    @queue = @config["queue"]
 
-    def self.perform(config, filename)
+    def self.execute(filename)
+        style = @config["style"] 
+        *filename, extension = filename.split(".")
+        filename = filename.join(".")
+
+        content = File.open("#{filename}.srt", "r:iso-8859-1") { |io| io.read }.to_s
+ 
+        # http://activearchives.org/wiki/Cookbook#Convert_.srt_subtitles_into_.ssa_allowing_styling
+        content.gsub!(/^[0-9]*$/, "")
+        content.gsub!(/ --> /, ",")
+        content.gsub!(/([0-9][0-9]),([0-9][0-9][0-9])/, '\1.\2')
+        content.gsub!(/([0-9].*[0-9])/, 'Dialogue: 1,\0,MyStyle,NTP,0000,0000,0000,,')
+        content.gsub!("\n", "")
+        content.gsub!(/Dialogue/, "\n" + '\0')
+        content.gsub!(/(,)[0-9]([0-9]:)/, '\1\2')
+
+        File.open("#{filename}.ssa", "w:iso-8859-1") { |io| io.write("#{style}\n#{content}") }
+    end
+end
+
+class ConvertAndRename < Base
+    @config = get_job_config()
+    @queue = @config["queue"]
+
+    def self.execute(filename)
         Dir.chdir(File.dirname(filename))
         *filename, extension = filename.split(".")
         filename = filename.join(".")
 
-        cmd = config["convert"] % [ filename, "#{filename}.#{extension}", filename ]
+        cmd = @config["command"] % [ filename, "#{filename}.#{extension}", filename ]
 
         err = ""
-        if Open4::popen4(cmd) { |p,i,o,e| err = e.read } == 0
+        out = ""
+        if Open4::popen4(cmd) { |p,i,o,e| err = e.read; out = o.read } == 0
             rename("#{filename}.#{extension}")
         else
-            raise "Couldn't convert #{filename}.#{extension}: \n#{err}"
+            raise "Couldn't convert #{filename}.#{extension}: \n#{out}\n#{err}"
         end
     end
 
@@ -54,13 +96,14 @@ if $PROGRAM_NAME == __FILE__
         ENV["TR_TORRENT_NAME"]
     ].join("/")
 
-    config = YAML.load_file(File.dirname(__FILE__) + "/torrent-done.yaml")
+    config = Base.read()
     extensions = config["extensions"].split(" ")
 
     Dir.chdir(directory)
-    Dir.glob("**/*").each do |filename|
+    Dir.glob("**/*").sort.each do |filename|
         if extensions.include? filename.split(".").last.downcase
-            Resque.enqueue(TorrentDone, config, "#{directory}/#{filename}")
+            jobs = config["jobs"].split(" ")
+            Resque.enqueue(jobs.shift.camelize.constantize, jobs, "#{directory}/#{filename}")
         end
     end
 end
