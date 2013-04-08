@@ -4,6 +4,7 @@ require "resque"
 require "open4"
 require "yaml"
 require "active_support/inflector"
+require "srt"
 
 class Base
     def self.read
@@ -11,12 +12,12 @@ class Base
     end
 
     def self.get_job_config
-        read()[self.to_s.underscore]
+        read()["jobs"][self.to_s]
     end
 
     def self.perform(jobs, filename)
         execute(filename)
-        Resque.enqueue(jobs.shift.camelize.constantize, jobs, filename) unless jobs.empty?
+        Resque.enqueue(jobs.shift.constantize, jobs, filename) unless jobs.empty?
     end
 end
 
@@ -40,24 +41,30 @@ end
 class ConvertSubtitles < Base
     @config = get_job_config() 
     @queue = @config["queue"]
+    DIALOGUE = "Dialogue: Marked=0,%s,%s,Default,,0000,0000,0000,,%s"
 
     def self.execute(filename)
         style = @config["style"] 
         *filename, extension = filename.split(".")
         filename = filename.join(".")
 
-        content = File.open("#{filename}.srt", "r:iso-8859-1") { |io| io.read }.to_s
- 
-        # http://activearchives.org/wiki/Cookbook#Convert_.srt_subtitles_into_.ssa_allowing_styling
-        content.gsub!(/^[0-9]*$/, "")
-        content.gsub!(/ --> /, ",")
-        content.gsub!(/([0-9][0-9]),([0-9][0-9][0-9])/, '\1.\2')
-        content.gsub!(/([0-9].*[0-9])/, 'Dialogue: 1,\0,MyStyle,NTP,0000,0000,0000,,')
-        content.gsub!("\n", "")
-        content.gsub!(/Dialogue/, "\n" + '\0')
-        content.gsub!(/(,)[0-9]([0-9]:)/, '\1\2')
+        srt = SRT::File.parse(File.new("#{filename}.srt", "r:iso-8859-1"))
+        ssa = []
 
-        File.open("#{filename}.ssa", "w:iso-8859-1") { |io| io.write("#{style}\n#{content}") }
+        srt.lines.each do |line|
+            line = format_time(line.start_time), format_time(line.end_time), line.text.join("\\N")
+            ssa << DIALOGUE % line
+        end
+
+        ssa = ssa.join("\n")
+
+        File.open("#{filename}.ssa", "w:iso-8859-1") { |io| io.write("#{style}#{ssa}") }
+    end
+
+    def self.format_time(t)
+        t = t.round(2)
+        time = t / 3600, (t % 3600) / 60, t % 60, (t.abs.modulo(1) * 100).to_i
+        sprintf("%01d:%02d:%02d.%02d", *time)
     end
 end
 
@@ -83,7 +90,13 @@ class ConvertAndRename < Base
 
     def self.rename(filename)
         Dir.chdir(File.dirname(filename))
-        File.rename(filename, "#{filename}.old") 
+
+        if @config["backup"].to_i == 1
+            File.rename(filename, "#{filename}.old") 
+        else
+            File.unlink(filename)
+        end
+
         *filename, extension = filename.split(".")
         filename = filename.join(".")
         File.rename("#{filename}.sub.mkv", "#{filename}.mkv")
@@ -98,12 +111,13 @@ if $PROGRAM_NAME == __FILE__
 
     config = Base.read()
     extensions = config["extensions"].split(" ")
+    selected_jobs = config["jobs"].select { |k, v| v["disabled"].to_i != 1 }
 
     Dir.chdir(directory)
     Dir.glob("**/*").sort.each do |filename|
         if extensions.include? filename.split(".").last.downcase
-            jobs = config["jobs"].split(" ")
-            Resque.enqueue(jobs.shift.camelize.constantize, jobs, "#{directory}/#{filename}")
+            jobs = selected_jobs.keys
+            Resque.enqueue(jobs.shift.constantize, jobs, "#{directory}/#{filename}")
         end
     end
 end
