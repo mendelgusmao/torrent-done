@@ -1,6 +1,12 @@
 TorrentDone:
   queue: torrent-done
-  extensions: mkv rmvb avi mp4 mpg mpeg
+  extensions:
+    - mkv
+    - rmvb
+    - avi
+    - mp4
+    - mpg
+    - mpeg
 DownloadSubtitles: 
   command: /usr/local/bin/subliminal -w 1 -l pt-br "%1$s"
   queue: torrent-done-subtitles
