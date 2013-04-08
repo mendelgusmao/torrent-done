@@ -6,13 +6,15 @@ require "yaml"
 require "active_support/inflector"
 require "srt"
 
-class Base
+class BaseJob
+    @all_config = nil
+
     def self.read
-        YAML.load_file(File.dirname(__FILE__) + "/torrent-done.yaml")
+        @all_config ||= YAML.load_file(File.dirname(__FILE__) + "/torrent-done.yaml")
     end
 
     def self.get_job_config
-        read()["jobs"][self.to_s]
+        read()[self.to_s]
     end
 
     def self.perform(jobs, filename)
@@ -21,7 +23,25 @@ class Base
     end
 end
 
-class DownloadSubtitles < Base
+class TorrentDone < BaseJob
+    @config = get_job_config() 
+    @queue = @config["queue"]
+
+    def self.execute(directory)
+        extensions = @config["extensions"]
+        selected_jobs = @all_config.select { |k, v| k != self.to_s && v["disabled"].to_i != 1 }
+
+        Dir.chdir(directory)
+        Dir.glob("**/*").sort.each do |filename|
+            if extensions.include? filename.split(".").last.downcase
+                jobs = selected_jobs.keys
+                Resque.enqueue(jobs.shift.constantize, jobs, "#{directory}/#{filename}")
+            end
+        end
+    end
+end
+
+class DownloadSubtitles < BaseJob
     @config = get_job_config() 
     @queue = @config["queue"]
 
@@ -38,7 +58,7 @@ class DownloadSubtitles < Base
     end
 end
 
-class ConvertSubtitles < Base
+class ConvertSubtitles < BaseJob
     @config = get_job_config() 
     @queue = @config["queue"]
     DIALOGUE = "Dialogue: Marked=0,%s,%s,Default,,0000,0000,0000,,%s"
@@ -68,7 +88,7 @@ class ConvertSubtitles < Base
     end
 end
 
-class ConvertAndRename < Base
+class ConvertAndRename < BaseJob
     @config = get_job_config()
     @queue = @config["queue"]
 
@@ -109,15 +129,5 @@ if $PROGRAM_NAME == __FILE__
         ENV["TR_TORRENT_NAME"]
     ].join("/")
 
-    config = Base.read()
-    extensions = config["extensions"].split(" ")
-    selected_jobs = config["jobs"].select { |k, v| v["disabled"].to_i != 1 }
-
-    Dir.chdir(directory)
-    Dir.glob("**/*").sort.each do |filename|
-        if extensions.include? filename.split(".").last.downcase
-            jobs = selected_jobs.keys
-            Resque.enqueue(jobs.shift.constantize, jobs, "#{directory}/#{filename}")
-        end
-    end
+    Resque.enqueue(TorrentDone, [], directory)
 end

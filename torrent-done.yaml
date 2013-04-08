@@ -1,35 +1,42 @@
-extensions: mkv rmvb avi mp4 mpg mpeg
-jobs: 
-  DownloadSubtitles: 
-    command: /usr/local/bin/subliminal -w 1 -l pt-br "%1$s"
-    queue: transmission-subtitles
-  ConvertSubtitles:
-    disabled: 1
-    queue: transmission-subtitles
-    style: |
-      [Script Info]
-      Title:
-      Original Script:
-      Original Translation:
-      Original Editing:
-      Original Timing:
-      Synch Point:
-      Script Updated By:
-      Update Details:
-      ScriptType: v4.00
-      Collisions: Normal
-      PlayResY:
-      PlayResX:
-      PlayDepth:
-      Timer: 100.0000
-      
-      [V4 Styles]
-      Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, TertiaryColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, AlphaLevel, Encoding
-      Style: Default,Sans,18,&HFFFFFF,&HFFFF00,&H000000,&H000000,0,0,1,2,2,2,30,30,30,0,0
-      
-      [Events]
-      Format: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-  ConvertAndRename: 
-    command: /usr/bin/mkvmerge -o "%1$s.sub.mkv" "%2$s" --clusters-in-meta-seek --engage no_cue_duration --engage no_cue_relative_position --subtitle-charset 0:ISO-8859-1 "%3$s.ssa"
-    queue: transmission-convert
-    backup: 0
+TorrentDone:
+  queue: torrent-done
+  extensions: mkv rmvb avi mp4 mpg mpeg
+DownloadSubtitles: 
+  command: /usr/local/bin/subliminal -w 1 -l pt-br "%1$s"
+  queue: torrent-done-subtitles
+ConvertSubtitles:
+  disabled: 1
+  queue: torrent-done-subtitles
+  style: |
+    [Script Info]
+    Title:
+    Original Script:
+    Original Translation:
+    Original Editing:
+    Original Timing:
+    Synch Point:
+    Script Updated By:
+    Update Details:
+    ScriptType: v4.00
+    Collisions: Normal
+    PlayResY:
+    PlayResX:
+    PlayDepth:
+    Timer: 100.0000
+    
+    [V4 Styles]
+    Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, TertiaryColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, AlphaLevel, Encoding
+    Style: Default,Sans,18,&HFFFFFF,&HFFFF00,&H000000,&H000000,0,0,1,2,2,2,30,30,30,0,0
+    
+    [Events]
+    Format: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+ConvertAndRename: 
+  command: > 
+    /usr/bin/mkvmerge 
+    -o "%1$s.sub.mkv" "%2$s" 
+    --clusters-in-meta-seek 
+    --engage no_cue_duration 
+    --engage no_cue_relative_position 
+    --subtitle-charset 0:ISO-8859-1 "%3$s.srt"
+  queue: torrent-done-convert
+  backup: 1

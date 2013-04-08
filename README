@@ -13,3 +13,5 @@ Modify /etc/transmission-daemon/settings.json
   "script-torrent-done-filename": "/path/to/torrent-done.rb"
 
 Modify /path/to/torrent-done.yaml to suit your needs
+
+To enqueue manually, execute /path/to/torrent-done.rb <directory>
