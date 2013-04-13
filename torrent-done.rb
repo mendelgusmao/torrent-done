@@ -1,4 +1,4 @@
-#!env ruby
+#!/usr/bin/env ruby
 
 require "resque"
 require "open4"
