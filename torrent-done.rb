@@ -5,6 +5,7 @@ require "open4"
 require "yaml"
 require "active_support/inflector"
 require "srt"
+require "charlock_holmes"
 
 require_relative "./jobs/base_job"
 require_relative "./jobs/torrent_done"

@@ -5,6 +5,7 @@ Depends on
 - gem resque
 - gem active_support/inflector
 - gem srt
+- gem charlock_holmes
 - mkvmerge
 - subliminal
 
