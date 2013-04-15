@@ -1,0 +1,14 @@
+SimpleJob:
+  disabled: 0
+JobAddingMoreParameters:
+  disabled: 0
+JobReceivingMoreParameters:
+  disabled: 0
+TorrentDone:
+  disabled: 1
+DownloadSubtitles:
+  disabled: 1
+ConvertSubtitles:
+  disabled: 1
+ConvertAndRename:
+  disabled: 1
