@@ -4,7 +4,9 @@ class TorrentDone < BaseJob
 
     def self.execute(directory)
         extensions = @config["extensions"]
-        selected_jobs = @all_config.select { |k, v| k != self.to_s && v["disabled"].to_i != 1 }
+        selected_jobs = @all_config.select do |k, v| 
+            k != self.to_s and v["disabled"].to_i != 1
+        end
 
         Dir.chdir(directory)
         Dir.glob("**/*").sort.each do |filename|
