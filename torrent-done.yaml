@@ -43,6 +43,6 @@ ConvertAndRename:
     --clusters-in-meta-seek 
     --engage no_cue_duration 
     --engage no_cue_relative_position 
-    --subtitle-charset 0:UTF-8 "%3$s.srt"
+    --subtitle-charset 0:%3$s "%4$s.%5$s"
   queue: torrent-done-convert
   backup: 1

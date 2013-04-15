@@ -2,12 +2,18 @@ class ConvertAndRename < BaseJob
     @config = get_job_config()
     @queue = @config["queue"]
 
-    def self.execute(filename)
-        Dir.chdir(File.dirname(filename))
+    def self.execute(filename, subtitle_format)
         *filename, extension = filename.split(".")
         filename = filename.join(".")
 
-        cmd = @config["command"] % [ filename, "#{filename}.#{extension}", filename ]
+        options = [ 
+            filename, 
+            "#{filename}.#{extension}", 
+            detect_encoding(filename, subtitle_format), 
+            filename,
+            subtitle_format 
+        ]
+        cmd = @config["command"] % options
 
         err = ""
         out = ""
@@ -16,11 +22,11 @@ class ConvertAndRename < BaseJob
         else
             raise "Couldn't convert #{filename}.#{extension}: \n#{out}\n#{err}"
         end
+        
+        nil
     end
 
     def self.rename(filename)
-        Dir.chdir(File.dirname(filename))
-
         if @config["backup"].to_i == 1
             File.rename(filename, "#{filename}.old") 
         else
@@ -31,4 +37,10 @@ class ConvertAndRename < BaseJob
         filename = filename.join(".")
         File.rename("#{filename}.sub.mkv", "#{filename}.mkv")
     end
+
+    def self.detect_encoding(filename, subtitle_format)
+        contents = File.read("#{filename}.#{subtitle_format}")
+        detection = CharlockHolmes::EncodingDetector.detect(contents)
+        detection[:encoding]
+    end     
 end

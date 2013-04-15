@@ -3,12 +3,12 @@ class ConvertSubtitles < BaseJob
     @queue = @config["queue"]
     DIALOGUE = "Dialogue: Marked=0,%s,%s,Default,,0000,0000,0000,,%s"
 
-    def self.execute(filename)
+    def self.execute(filename, subtitle_format)
         style = @config["style"] 
         *filename, extension = filename.split(".")
         filename = filename.join(".")
 
-        srt = SRT::File.parse(File.new("#{filename}.srt", "r:iso-8859-1"))
+        srt = SRT::File.parse(File.new("#{filename}.#{subtitle_format}", "r"))
         ssa = []
 
         srt.lines.each do |line|
@@ -18,7 +18,9 @@ class ConvertSubtitles < BaseJob
 
         ssa = ssa.join("\n")
 
-        File.open("#{filename}.ssa", "w:iso-8859-1") { |io| io.write("#{style}#{ssa}") }
+        File.open("#{filename}.ssa", "w") { |io| io.write("#{style}#{ssa}") }
+        
+        "ssa"
     end
 
     def self.format_time(t)
